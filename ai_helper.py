@@ -1,16 +1,30 @@
 import os
-import google.generativeai as genai
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-model = genai.GenerativeModel("gemini-pro")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
 
 def generate_hint(language: str, code: str) -> str:
     prompt = f"Explain this {language} code to a 10-year-old beginner:\n\n{code}\n\nUse a fun and simple tone."
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+
     try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
+        response = requests.post(GEMINI_ENDPOINT, json=payload)
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+        else:
+            return f"Gemini API error: {response.status_code} - {response.text}"
     except Exception as e:
         return f"Error generating hint: {str(e)}"
