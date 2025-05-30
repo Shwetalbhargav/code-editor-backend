@@ -29,6 +29,10 @@ app.mount("/static", StaticFiles(directory="temp"), name="static")
 def rate_limit_handler(request, exc):
     return PlainTextResponse("Rate limit exceeded", status_code=429)
 
+@app.get("/")
+def read_root():
+    return {"message": "Code Companion backend is running."}
+
 @app.post("/run")
 def run_code(code_req: CodeRequest):
     try:
