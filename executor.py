@@ -12,13 +12,14 @@ def execute_code(language: str, code: str, stdin: str = "") -> dict:
     filename = os.path.join(TEMP_DIR, f"{temp_id}.{ext}")
     image_path = os.path.join(TEMP_DIR, f"{temp_id}.png")
 
-    # Detect graphical code and inject saving logic
+    # Inject logic to save images for graphical Python code
     if language == "python" and ("matplotlib" in code or "turtle" in code or "tkinter" in code):
         code += f"\nimport matplotlib.pyplot as plt\nplt.savefig('{image_path}')"
 
     with open(filename, "w") as f:
         f.write(code)
 
+    # Validate language
     if language not in ["python", "javascript"]:
         return {
             "output": "Unsupported language.",
@@ -28,20 +29,13 @@ def execute_code(language: str, code: str, stdin: str = "") -> dict:
             "execution_time": 0.0
         }
 
-    docker_command = [
-        "docker", "run", "--rm",
-        "--network", "none",
-        "--memory", "100m",
-        "--cpus", "0.5",
-        "-v", f"{os.path.abspath(TEMP_DIR)}:/app",
-        "python:3.9",
-        "python", f"/app/{temp_id}.{ext}"
-    ]
+    # Direct command (no Docker)
+    command = ["python3", filename] if language == "python" else ["node", filename]
 
     start = time.time()
     try:
         result = subprocess.run(
-            docker_command,
+            command,
             input=stdin.encode(),
             capture_output=True,
             timeout=10
