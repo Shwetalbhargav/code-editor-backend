@@ -4,11 +4,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
+from fastapi.staticfiles import StaticFiles
 from schemas import CodeRequest, CodeResponse, HintRequest
 from executor import execute_code
 from db import save_code, load_code, log_execution
 from ai_helper import generate_hint
+import os
+
 
 app = FastAPI()
 
@@ -22,53 +24,45 @@ app.add_middleware(
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-
+app.mount("/static", StaticFiles(directory="temp"), name="static")
 @app.exception_handler(RateLimitExceeded)
 def rate_limit_handler(request, exc):
     return PlainTextResponse("Rate limit exceeded", status_code=429)
 
-@app.post("/run", response_model=CodeResponse)
+@app.post("/run")
 def run_code(code_req: CodeRequest):
     try:
         result = execute_code(code_req.language, code_req.code, code_req.stdin)
-        code_id = save_code(code_req.language, code_req.code)
 
-        # Build the response structure the frontend expects
+        # Extract values
         output = result.get("output", "")
         output_type = result.get("output_type", "text")
         image_url = None
+
         if output_type == "image" and result.get("image_path"):
             image_filename = os.path.basename(result["image_path"])
             image_url = f"https://code-editor-backend-pync.onrender.com/static/{image_filename}"
 
-
-        response = {
+        return {
             "output": output,
             "outputType": output_type,
             "imageUrl": image_url,
             "metadata": {
                 "executionTime": result.get("execution_time"),
                 "exitCode": result.get("exit_code"),
-                "errorType": result.get("error_type"),
+                "errorType": result.get("error_type")
             }
         }
 
-        # Save and log
-        response["language"] = code_req.language
-        response["code_id"] = code_id
-        log_execution(code_id, response)
-
-        return response
-
     except Exception as e:
         return {
-            "output": f"Internal server error: {str(e)}",
+            "output": f"Server error: {str(e)}",
             "outputType": "text",
             "imageUrl": None,
             "metadata": {
                 "executionTime": 0.0,
-                "exitCode": -500,
-                "errorType": "InternalServerError"
+                "exitCode": -1,
+                "errorType": "Exception"
             }
         }
 
