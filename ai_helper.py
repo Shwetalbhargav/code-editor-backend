@@ -9,7 +9,7 @@ GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/gemi
 
 def generate_hint(language: str, code: str) -> str:
     prompt = f"Explain this {language} code to a 10-year-old beginner:\n\n{code}\n\nUse a fun and simple tone."
-    
+
     payload = {
         "contents": [
             {
@@ -25,6 +25,8 @@ def generate_hint(language: str, code: str) -> str:
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
         else:
-            return f"Gemini API error: {response.status_code} - {response.text}"
+            return f"[Gemini API Error {response.status_code}] {response.text}"
+    except requests.exceptions.RequestException as e:
+        return f"[HintGenerationError] Request failed: {str(e)}"
     except Exception as e:
-        return f"Error generating hint: {str(e)}"
+        return f"[HintGenerationError] Unexpected error: {str(e)}"

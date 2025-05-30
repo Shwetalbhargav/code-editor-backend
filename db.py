@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, CodeSnippet
+from models import Base, CodeSnippet, ExecutionLog
 from dotenv import load_dotenv
 import uuid
 import os
@@ -36,3 +36,20 @@ def load_code(code_id: str):
     if snippet:
         return {"language": snippet.language, "code": snippet.code}
     return None
+
+def log_execution(code_id: str, metadata: dict):
+    session = SessionLocal()
+    log = ExecutionLog(
+        id=str(uuid.uuid4()),
+        code_id=code_id,
+        language=metadata.get("language"),
+        output=metadata.get("output"),
+        output_type=metadata.get("output_type"),
+        image_path=metadata.get("image_path"),
+        exit_code=metadata.get("exit_code"),
+        error_type=metadata.get("error_type"),
+        execution_time=metadata.get("execution_time"),
+    )
+    session.add(log)
+    session.commit()
+    session.close()
