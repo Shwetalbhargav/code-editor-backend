@@ -33,21 +33,44 @@ def run_code(code_req: CodeRequest):
         result = execute_code(code_req.language, code_req.code, code_req.stdin)
         code_id = save_code(code_req.language, code_req.code)
 
-        # Log execution metadata
-        result_with_lang = dict(result)
-        result_with_lang["language"] = code_req.language
-        result_with_lang["code_id"] = code_id
-        log_execution(code_id, result_with_lang)
+        # Build the response structure the frontend expects
+        output = result.get("output", "")
+        output_type = result.get("output_type", "text")
+        image_url = None
+        if output_type == "image" and result.get("image_path"):
+            image_filename = os.path.basename(result["image_path"])
+            image_url = f"https://code-editor-backend-pync.onrender.com/static/{image_filename}"
 
-        return CodeResponse(**result)
+
+        response = {
+            "output": output,
+            "outputType": output_type,
+            "imageUrl": image_url,
+            "metadata": {
+                "executionTime": result.get("execution_time"),
+                "exitCode": result.get("exit_code"),
+                "errorType": result.get("error_type"),
+            }
+        }
+
+        # Save and log
+        response["language"] = code_req.language
+        response["code_id"] = code_id
+        log_execution(code_id, response)
+
+        return response
+
     except Exception as e:
-        return CodeResponse(
-            output=f"Internal server error: {str(e)}",
-            output_type="text",
-            exit_code=-500,
-            error_type="InternalServerError",
-            execution_time=0.0
-        )
+        return {
+            "output": f"Internal server error: {str(e)}",
+            "outputType": "text",
+            "imageUrl": None,
+            "metadata": {
+                "executionTime": 0.0,
+                "exitCode": -500,
+                "errorType": "InternalServerError"
+            }
+        }
 
 @app.post("/save")
 def save_code_api(code_req: CodeRequest):
