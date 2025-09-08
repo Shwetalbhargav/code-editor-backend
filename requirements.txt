@@ -2,10 +2,10 @@ fastapi
 uvicorn
 pydantic
 python-multipart
-sqlalchemy
-pymysql
 python-dotenv
-google-generativeai>=0.3.2
 slowapi
 requests
 matplotlib
+pymongo
+dnspython
+pymongo

@@ -1,55 +1,52 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from models import Base, CodeSnippet, ExecutionLog
-from dotenv import load_dotenv
-import uuid
 import os
+import uuid
+from datetime import datetime
+from dotenv import load_dotenv
+from pymongo import MongoClient
 
-# Load from .env
 load_dotenv()
 
-USE_DB = True
+MONGODB_URI = os.getenv("MONGODB_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "codeeditor")
 
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT", "3306")
-DB_NAME = os.getenv("DB_NAME")
+if not MONGODB_URI:
+    raise RuntimeError("MONGODB_URI is not set")
 
-DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine = create_engine(DB_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+client = MongoClient(MONGODB_URI)
+db = client[MONGO_DB_NAME]
+
+snippets = db["code_snippets"]
+exec_logs = db["execution_logs"]
 
 def save_code(language: str, code: str) -> str:
     code_id = str(uuid.uuid4())[:8]
-    session = SessionLocal()
-    snippet = CodeSnippet(id=code_id, language=language, code=code)
-    session.add(snippet)
-    session.commit()
-    session.close()
+    doc = {
+        "_id": code_id,
+        "language": language,
+        "code": code,
+        "createdAt": datetime.utcnow(),
+        "updatedAt": datetime.utcnow(),
+    }
+    snippets.insert_one(doc)
     return code_id
 
 def load_code(code_id: str):
-    session = SessionLocal()
-    snippet = session.query(CodeSnippet).filter_by(id=code_id).first()
-    session.close()
-    if snippet:
-        return {"language": snippet.language, "code": snippet.code}
-    return None
+    doc = snippets.find_one({"_id": code_id})
+    if not doc:
+        return None
+    return {"language": doc.get("language"), "code": doc.get("code")}
 
 def log_execution(code_id: str, metadata: dict):
-    session = SessionLocal()
-    log = ExecutionLog(
-        id=str(uuid.uuid4()),
-        code_id=code_id,
-        language=metadata.get("language"),
-        output=metadata.get("output"),
-        output_type=metadata.get("output_type"),
-        image_path=metadata.get("image_path"),
-        exit_code=metadata.get("exit_code"),
-        error_type=metadata.get("error_type"),
-        execution_time=metadata.get("execution_time"),
-    )
-    session.add(log)
-    session.commit()
-    session.close()
+    log = {
+        "_id": str(uuid.uuid4()),
+        "code_id": code_id,
+        "language": metadata.get("language"),
+        "output": metadata.get("output"),
+        "output_type": metadata.get("output_type"),
+        "image_path": metadata.get("image_path"),
+        "exit_code": metadata.get("exit_code"),
+        "error_type": metadata.get("error_type"),
+        "execution_time": metadata.get("execution_time"),
+        "timestamp": datetime.utcnow(),
+    }
+    exec_logs.insert_one(log)

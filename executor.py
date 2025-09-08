@@ -8,19 +8,47 @@ TEMP_DIR = "temp"
 def execute_code(language: str, code: str, stdin: str = "") -> dict:
     os.makedirs(TEMP_DIR, exist_ok=True)
     temp_id = str(uuid.uuid4())
+    image_path = os.path.join(TEMP_DIR, f"{temp_id}.png")
+
+    # HTML support: just write the file and return its URL path
+    if language == "html":
+        html_file = os.path.join(TEMP_DIR, f"{temp_id}.html")
+        with open(html_file, "w", encoding="utf-8") as f:
+            f.write(code)
+        return {
+            "output": f"/static/{os.path.basename(html_file)}",
+            "output_type": "html_url",
+            "image_path": None,
+            "exit_code": 0,
+            "error_type": None,
+            "execution_time": 0.0
+        }
+
     ext = "py" if language == "python" else "js"
     filename = os.path.join(TEMP_DIR, f"{temp_id}.{ext}")
-    image_path = os.path.join(TEMP_DIR, f"{temp_id}.png")
 
     # Inject logic to save images for graphical Python code
     if language == "python" and ("matplotlib" in code or "turtle" in code or "tkinter" in code):
-        code += f"\nimport matplotlib.pyplot as plt\nplt.savefig('{image_path}')"
+        inject = (
+            "\\nimport matplotlib; matplotlib.use('Agg')\\n"
+            "import os\\n"
+            f"import matplotlib.pyplot as plt\\n"
+        )
+        code = inject + code + (
+            "\\n"
+            f"plt.savefig(r'{image_path}') if 'plt' in globals() else None\\n"
+            "print('[ImageSaved]')\\n"
+        )
 
-    with open(filename, "w") as f:
+    with open(filename, "w", encoding="utf-8") as f:
         f.write(code)
 
-    # Validate language
-    if language not in ["python", "javascript"]:
+    # Direct command (no Docker)
+    if language == "python":
+        command = ["python3", filename]
+    elif language in ("javascript", "js"):
+        command = ["node", filename]
+    else:
         return {
             "output": "Unsupported language.",
             "output_type": "text",
@@ -29,42 +57,33 @@ def execute_code(language: str, code: str, stdin: str = "") -> dict:
             "execution_time": 0.0
         }
 
-    # Direct command (no Docker)
-    command = ["python3", filename] if language == "python" else ["node", filename]
-
     start = time.time()
     try:
         result = subprocess.run(
             command,
-            input=stdin.encode(),
-            capture_output=True,
+            input=stdin.encode("utf-8") if stdin else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             timeout=10
         )
-        duration = time.time() - start
-
-        stdout = result.stdout.decode()
-        stderr = result.stderr.decode()
-        exit_code = result.returncode
-        error_type = "RuntimeError" if exit_code != 0 else None
-
+        out_text = result.stdout.decode("utf-8", errors="replace")
+        output_type = "image" if os.path.exists(image_path) else "text"
         return {
-            "output": stdout + stderr,
-            "output_type": "image" if os.path.exists(image_path) else "text",
-            "image_path": image_path if os.path.exists(image_path) else None,
-            "exit_code": exit_code,
-            "error_type": error_type,
-            "execution_time": round(duration, 4)
+            "output": out_text if output_type == "text" else f"/static/{os.path.basename(image_path)}",
+            "output_type": output_type,
+            "image_path": f"/static/{os.path.basename(image_path)}" if output_type == "image" else None,
+            "exit_code": result.returncode,
+            "error_type": None if result.returncode == 0 else "Runtime",
+            "execution_time": round(time.time() - start, 4)
         }
-
     except subprocess.TimeoutExpired:
         return {
-            "output": "Execution timed out.",
+            "output": "Execution timed out after 10 seconds.",
             "output_type": "text",
             "exit_code": -1,
             "error_type": "Timeout",
             "execution_time": round(time.time() - start, 4)
         }
-
     except Exception as e:
         return {
             "output": f"Execution error: {str(e)}",
